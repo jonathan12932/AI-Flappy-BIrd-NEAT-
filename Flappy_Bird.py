@@ -197,13 +197,28 @@ def fitness_function(genomes, config):
 
     base = Base(730)
     pipes = deque([Pipe()])  # Start with one pipe
+    oldPipes = deque()
     spawnRate = 1
     pipes_crossed = 0
 
+            
     # Game loop
     while len(birds) > 0:
+
         spawnRate += 1
         clock.tick(60)  # Limit the game to 60 FPS
+
+        # Check if bird has passed a pipe
+        for pipe in pipes:
+            if not pipe.PASSED and pipe.x + PIPE_IMG.get_width() <= birds[0].x:
+                pipe.PASSED = True
+                pipes_crossed += 1
+
+                for i in range(len(birds)):
+                    genomes_list[i].fitness += 1  # Reward for passing a pipe
+
+                oldPipes.append(pipes.popleft())
+                break 
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -225,9 +240,13 @@ def fitness_function(genomes, config):
             pipe.move()
             pipe.draw(win)
 
+        for pipe in oldPipes:
+            pipe.move()
+            pipe.draw(win)
+
         # Remove pipes that are out of bounds
-        if pipes and pipes[0].x + PIPE_IMG.get_width() < 0:
-            pipes.popleft()
+        if oldPipes and oldPipes[0].x + PIPE_IMG.get_width() < 0:
+            oldPipes.popleft()
 
         # Birds to be removed
         birds_to_remove = []
@@ -237,7 +256,7 @@ def fitness_function(genomes, config):
             bird.draw(win)
 
             # Update fitness: Give a small reward for staying alive
-            genomes_list[i].fitness += 0.1
+            genomes_list[i].fitness += 0.001
 
             # Check collision or out-of-bounds
             if bird.y + bird.img.get_height() >= base.y or bird.y < 0:
@@ -249,13 +268,6 @@ def fitness_function(genomes, config):
                 if pipe.collide(bird.get_rect()):
                     birds_to_remove.append(i)  # Mark for removal
                     break
-
-            # Check if bird has passed a pipe
-            for pipe in pipes:
-                if not pipe.PASSED and pipe.x <= bird.x:
-                    pipe.PASSED = True
-                    pipes_crossed += 1
-                    genomes_list[i].fitness += 10  # Reward for passing a pipe
 
             # Neural network output for bird
             if len(pipes) > 0:

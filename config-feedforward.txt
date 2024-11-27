@@ -1,12 +1,12 @@
 [NEAT]
 fitness_criterion     = max
 fitness_threshold     = 1000
-pop_size              = 500
+pop_size              = 30
 reset_on_extinction   = 0
 
 [DefaultGenome]
 num_inputs              = 3
-num_hidden              = 1
+num_hidden              = 0
 num_outputs             = 1
 initial_connection      = full
 feed_forward            = True
@@ -56,4 +56,4 @@ max_stagnation  = 20
 
 [DefaultReproduction]
 elitism            = 2
-survival_threshold = 0.3
+survival_threshold = .1
