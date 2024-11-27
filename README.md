@@ -1,1 +1,1 @@
-# AI-Flappy-BIrd-NEAT-
+# AI-Flappy-BIrd-NEAT

@@ -88,7 +88,7 @@ class Bird:
 # Floor moving alonside bird
 class Base:
 
-    VELOCITY = 2.5
+    VELOCITY = 3.5
     WIDTH = BASE_IMG.get_width()
 
     # Creates two floor images to ensure floor is contantly fills up the width
@@ -116,9 +116,9 @@ class Base:
 
 class Pipe:
 
-    VELOCITY = 2.5
+    VELOCITY = 3.5
     PIPE_GAP = 200  # Distance between top and bottom pipes
-    PASSED = True
+    PASSED = False
 
     def __init__(self):
         self.x = WIN_WIDTH
@@ -145,24 +145,6 @@ class Pipe:
             return True
         return False
 
-def draw_start_screen(win):
-    title_text = FONT.render("FLAPPY BIRD", 1, (255, 255, 255))
-    instruction_text = FONT.render("Press SPACE to Start", 1, (255, 255, 255))
-    
-    win.blit(BG_IMG, (0, 0))  # Draw background
-    win.blit(title_text, (WIN_WIDTH // 2 - title_text.get_width() // 2, 200))
-    win.blit(instruction_text, (WIN_WIDTH // 2 - instruction_text.get_width() // 2, 400))
-    pygame.display.update()
-
-    waiting = True
-    while waiting:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                waiting = False
-
 def draw_counter(win, pipes_crossed):
     # Shadow
     shadow_text = FONT.render(f"{pipes_crossed}", 1, (0, 0, 0))  # Black shadow
@@ -171,76 +153,6 @@ def draw_counter(win, pipes_crossed):
     # Main text
     counter_text = FONT.render(f"{pipes_crossed}", 1, (255, 255, 255))  # White text
     win.blit(counter_text, (WIN_WIDTH // 2 - counter_text.get_width() // 2, 50))  # Center the counter
-    
-
-def main():
-
-    # Create a Bird object
-    bird = Bird(200, 350)
-
-    # Create Base object
-    base = Base(730)
-
-    pipes = deque()
-    pipes.append(Pipe())
-
-    spawnRate = 1
-    pipes_crossed = 0
-    draw_start_screen(win)
-
-    # Game loop
-    while True:
-        spawnRate += 1
-
-        clock.tick(60)  # Limit the game to 60 FPS
-
-        # Handle events
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    bird.jump()
-
-        # Check if the bird hits the base
-        if bird.y + bird.img.get_height() >= base.y:
-            return  # Exit the current game and restart main()
-
-        # Move everything
-        bird.move()
-        base.move()
-
-        # Draw everything
-        win.blit(BG_IMG, (0, 0))  # Draw the background
-        bird.draw(win)
-        base.draw(win)
-
-        # Check for collisions with pipes
-        for pipe in pipes:
-            pipe.move()
-            pipe.draw(win)
-            if pipe.collide(bird.get_rect()):
-                return  # Exit the current game and restart main()
-
-        # Check if bird has crossed any pipes
-        for pipe in pipes:
-            if pipe.x <= bird.x:
-                if pipe.PASSED:
-                    pipes_crossed += 1
-                    pipe.PASSED = False
-
-        # Remove old pipes and spawn new ones
-        if pipes and pipes[0].x + PIPE_IMG.get_width() < 0:
-            pipes.popleft()
-
-        if spawnRate % 125 == 0:
-            spawnRate = 1
-            pipes.append(Pipe())
-
-        draw_counter(win, pipes_crossed)
-        pygame.display.update()  # Refresh the screen
-
 
 # Initialize Pygame
 pygame.init()
@@ -252,6 +164,127 @@ win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
 pygame.display.set_caption("Flappy Bird")
 clock = pygame.time.Clock()
 
+# Load the configuration file
+config_path = "config-feedforward.txt"  # Replace with your actual config file path
+config = neat.config.Config(
+    neat.DefaultGenome,
+    neat.DefaultReproduction,
+    neat.DefaultSpeciesSet,
+    neat.DefaultStagnation,
+    config_path,
+)
+
+# Create a NEAT population
+population = neat.Population(config)
+
+# Add reporters to monitor progress
+population.add_reporter(neat.StdOutReporter(True))  # Print stats in the terminal
+stats = neat.StatisticsReporter()
+population.add_reporter(stats)
+
+def fitness_function(genomes, config):
+    birds = []
+    nets = []
+    genomes_list = []  # Keep track of genomes in the same order as birds
+
+    for genome_id, genome in genomes:
+        # Create a neural network for the genome
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        nets.append(net)
+        birds.append(Bird(200, 350))  # Replace Bird() with your bird initialization logic
+        genomes_list.append(genome)  # Keep track of the genome
+        genome.fitness = 0  # Initialize fitness for this genome
+
+    base = Base(730)
+    pipes = deque([Pipe()])  # Start with one pipe
+    spawnRate = 1
+    pipes_crossed = 0
+
+    # Game loop
+    while len(birds) > 0:
+        spawnRate += 1
+        clock.tick(60)  # Limit the game to 60 FPS
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+
+        # Spawn new pipes
+        if spawnRate % 100 == 0:
+            spawnRate = 1
+            pipes.append(Pipe())
+
+        # Move base and draw background
+        base.move()
+        win.blit(BG_IMG, (0, 0))  # Draw the background
+        base.draw(win)
+
+        # Move pipes and draw them
+        for pipe in pipes:
+            pipe.move()
+            pipe.draw(win)
+
+        # Remove pipes that are out of bounds
+        if pipes and pipes[0].x + PIPE_IMG.get_width() < 0:
+            pipes.popleft()
+
+        # Birds to be removed
+        birds_to_remove = []
+
+        for i, bird in enumerate(birds):
+            bird.move()
+            bird.draw(win)
+
+            # Update fitness: Give a small reward for staying alive
+            genomes_list[i].fitness += 0.1
+
+            # Check collision or out-of-bounds
+            if bird.y + bird.img.get_height() >= base.y or bird.y < 0:
+                birds_to_remove.append(i)  # Mark for removal
+                continue
+
+            # Check pipe collision
+            for pipe in pipes:
+                if pipe.collide(bird.get_rect()):
+                    birds_to_remove.append(i)  # Mark for removal
+                    break
+
+            # Check if bird has passed a pipe
+            for pipe in pipes:
+                if not pipe.PASSED and pipe.x <= bird.x:
+                    pipe.PASSED = True
+                    pipes_crossed += 1
+                    genomes_list[i].fitness += 10  # Reward for passing a pipe
+
+            # Neural network output for bird
+            if len(pipes) > 0:
+                inputs = [
+                    (pipes[0].y1 + PIPE_IMG.get_height() + (pipes[0].PIPE_GAP / 2) - bird.y) / WIN_HEIGHT,  # Distance to gap center
+                    (pipes[0].x - bird.x) / WIN_WIDTH,  # Horizontal distance to pipe
+                    bird.vel / 10, # Bird's vertical velocity
+                ]
+                output = nets[i].activate(inputs) # Get output from the neural network
+
+                if output[0] > 0.5:  # Flap if output > 0.5
+                    bird.jump()
+
+        # Remove birds marked for removal
+        for index in sorted(birds_to_remove, reverse=True):
+            birds.pop(index)
+            nets.pop(index)
+            genomes_list.pop(index)
+
+        draw_counter(win, pipes_crossed)  # Draw the counter
+        pygame.display.update()  # Refresh the screen
+
+
+    
+def main():
+
+    # Run NEAT with the fitness function
+    winner = population.run(fitness_function, 50)  # 50 generations
+    print(f"Best genome: {winner}")
+
 # Start the game
-while True:
-    main()
+main()
